@@ -1,0 +1,166 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "create-block/houzez",
+  "version": "0.1.0",
+  "title": "Houzez Properties",
+  "category": "widgets",
+  "icon": "admin-home",
+  "description": "Display property listings with advanced real estate features.",
+  "example": {},
+  "supports": {
+    "html": false,
+    "align": [
+      "wide",
+      "full"
+    ],
+    "spacing": {
+      "margin": true,
+      "padding": true
+    },
+    "color": {
+      "text": true,
+      "background": true
+    },
+    "typography": {
+      "fontSize": true,
+      "lineHeight": true
+    }
+  },
+  "attributes": {
+    "postsToShow": {
+      "type": "number",
+      "default": 6
+    },
+    "order": {
+      "type": "string",
+      "enum": [
+        "ASC",
+        "DESC"
+      ],
+      "default": "DESC"
+    },
+    "orderBy": {
+      "type": "string",
+      "enum": [
+        "date",
+        "modified",
+        "title",
+        "price",
+        "size"
+      ],
+      "default": "date"
+    },
+    "layout": {
+      "type": "string",
+      "enum": [
+        "grid",
+        "list",
+        "masonry",
+        "carousel"
+      ],
+      "default": "grid"
+    },
+    "columns": {
+      "type": "number",
+      "default": 3
+    },
+    "showFeatured": {
+      "type": "boolean",
+      "default": true
+    },
+    "showPrice": {
+      "type": "boolean",
+      "default": true
+    },
+    "showLocation": {
+      "type": "boolean",
+      "default": true
+    },
+    "showSize": {
+      "type": "boolean",
+      "default": true
+    },
+    "showBedrooms": {
+      "type": "boolean",
+      "default": true
+    },
+    "showBathrooms": {
+      "type": "boolean",
+      "default": true
+    },
+    "showGarage": {
+      "type": "boolean",
+      "default": true
+    },
+    "showYearBuilt": {
+      "type": "boolean",
+      "default": true
+    },
+    "showAgent": {
+      "type": "boolean",
+      "default": true
+    },
+    "showStatus": {
+      "type": "boolean",
+      "default": true
+    },
+    "showTaxonomies": {
+      "type": "boolean",
+      "default": true
+    },
+    "showExcerpt": {
+      "type": "boolean",
+      "default": true
+    },
+    "excerptLength": {
+      "type": "number",
+      "default": 20
+    },
+    "showMeta": {
+      "type": "boolean",
+      "default": true
+    },
+    "showMap": {
+      "type": "boolean",
+      "default": false
+    },
+    "imageSize": {
+      "type": "string",
+      "enum": [
+        "thumbnail",
+        "medium",
+        "medium_large",
+        "large",
+        "full"
+      ],
+      "default": "medium_large"
+    },
+    "pricePrefix": {
+      "type": "string",
+      "default": "$"
+    },
+    "sizeSuffix": {
+      "type": "string",
+      "default": "sq ft"
+    },
+    "categoryFilter": {
+      "type": "string",
+      "default": ""
+    },
+    "statusFilter": {
+      "type": "string",
+      "default": ""
+    },
+    "featuredOnly": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "textdomain": "houzez",
+  "editorScript": "file:./index.js",
+  "editorStyle": "file:./index.css",
+  "style": "file:./style-index.css",
+  "viewScript": "file:./view.js",
+  "render": "file:./render.php"
+}
