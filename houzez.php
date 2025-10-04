@@ -370,7 +370,7 @@ class HouzezBlockRenderer {
     }
     
     /**
-     * Set default attribute values
+     * Set default attribute values from block.json
      */
     private function set_defaults() {
         $this->defaults = array(
@@ -815,149 +815,14 @@ class HouzezPlugin {
     }
     
     /**
-     * Register blocks
+     * Register blocks - uses block.json for configuration
      */
     public function register_blocks() {
-        // First register the block with render callback
-        register_block_type('create-block/houzez', array(
-            'render_callback' => array($this, 'render_properties_block'),
-            'attributes' => $this->get_block_attributes()
-        ));
-        
-        /**
-         * Registers the block(s) metadata from the `blocks-manifest.php` and registers the block type(s)
-         * based on the registered block metadata.
-         */
-        if (function_exists('wp_register_block_types_from_metadata_collection')) {
-            wp_register_block_types_from_metadata_collection(__DIR__ . '/build', __DIR__ . '/build/blocks-manifest.php');
-        }
-        elseif (function_exists('wp_register_block_metadata_collection')) {
-            wp_register_block_metadata_collection(__DIR__ . '/build', __DIR__ . '/build/blocks-manifest.php');
-        }
-        
-        /**
-         * Registers the block type(s) in the `blocks-manifest.php` file.
-         */
-        if (file_exists(__DIR__ . '/build/blocks-manifest.php')) {
-            $manifest_data = require __DIR__ . '/build/blocks-manifest.php';
-            foreach (array_keys($manifest_data) as $block_type) {
-                register_block_type(__DIR__ . "/build/{$block_type}");
-            }
-        }
-    }
-    
-    /**
-     * Get block attributes for server-side rendering
-     */
-    private function get_block_attributes() {
-        return array(
-            'postsToShow' => array(
-                'type' => 'number',
-                'default' => 6
-            ),
-            'order' => array(
-                'type' => 'string',
-                'enum' => array('ASC', 'DESC'),
-                'default' => 'DESC'
-            ),
-            'orderBy' => array(
-                'type' => 'string',
-                'enum' => array('date', 'modified', 'title', 'price', 'size'),
-                'default' => 'date'
-            ),
-            'layout' => array(
-                'type' => 'string',
-                'enum' => array('grid', 'list', 'masonry', 'carousel'),
-                'default' => 'grid'
-            ),
-            'columns' => array(
-                'type' => 'number',
-                'default' => 3
-            ),
-            'showFeatured' => array(
-                'type' => 'boolean',
-                'default' => true
-            ),
-            'showPrice' => array(
-                'type' => 'boolean',
-                'default' => true
-            ),
-            'showLocation' => array(
-                'type' => 'boolean',
-                'default' => true
-            ),
-            'showSize' => array(
-                'type' => 'boolean',
-                'default' => true
-            ),
-            'showBedrooms' => array(
-                'type' => 'boolean',
-                'default' => true
-            ),
-            'showBathrooms' => array(
-                'type' => 'boolean',
-                'default' => true
-            ),
-            'showGarage' => array(
-                'type' => 'boolean',
-                'default' => true
-            ),
-            'showYearBuilt' => array(
-                'type' => 'boolean',
-                'default' => true
-            ),
-            'showAgent' => array(
-                'type' => 'boolean',
-                'default' => true
-            ),
-            'showStatus' => array(
-                'type' => 'boolean',
-                'default' => true
-            ),
-            'showTaxonomies' => array(
-                'type' => 'boolean',
-                'default' => true
-            ),
-            'showExcerpt' => array(
-                'type' => 'boolean',
-                'default' => true
-            ),
-            'excerptLength' => array(
-                'type' => 'number',
-                'default' => 20
-            ),
-            'showMeta' => array(
-                'type' => 'boolean',
-                'default' => true
-            ),
-            'showMap' => array(
-                'type' => 'boolean',
-                'default' => false
-            ),
-            'imageSize' => array(
-                'type' => 'string',
-                'enum' => array('thumbnail', 'medium', 'medium_large', 'large', 'full'),
-                'default' => 'medium_large'
-            ),
-            'pricePrefix' => array(
-                'type' => 'string',
-                'default' => '$'
-            ),
-            'sizeSuffix' => array(
-                'type' => 'string',
-                'default' => 'sq ft'
-            ),
-            'categoryFilter' => array(
-                'type' => 'string',
-                'default' => ''
-            ),
-            'statusFilter' => array(
-                'type' => 'string',
-                'default' => ''
-            ),
-            'featuredOnly' => array(
-                'type' => 'boolean',
-                'default' => false
+        // Register block with render callback - WordPress will read block.json automatically
+        register_block_type(
+            plugin_dir_path(__FILE__) . 'build/houzez',
+            array(
+                'render_callback' => array($this, 'render_properties_block')
             )
         );
     }
@@ -966,7 +831,6 @@ class HouzezPlugin {
      * Render callback for properties block
      */
     public function render_properties_block($attributes, $content) {
-        // Use a different class name to avoid conflicts
         $renderer = new HouzezBlockRenderer($attributes);
         return $renderer->render();
     }
