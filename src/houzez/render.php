@@ -1,33 +1,55 @@
 <?php
+/**
+ * Server-Side Renderer for Houzez Gutenberg Blocks
+ * 
+ * @package Houzez
+ */
+
+if (! defined('ABSPATH')) {
+    exit; // Exit if accessed directly.
+}
 
 /**
- * Server Side Renderer for Houzez Properties
- * OOP implementation with proper encapsulation and separation of concerns
+ * Server-Side Renderer for Gutenberg Blocks
  */
-class HouzezPropertyRenderer {
-    private $attributes;
-    private $defaults;
-    private $query;
+class HouzezBlockRenderer {
     
     /**
-     * Constructor
+     * Render properties block with SSR
      */
-    public function __construct($attributes = array()) {
-        $this->attributes = $attributes;
-        $this->set_defaults();
-        $this->sanitize_attributes();
+    public static function render_properties_block($attributes, $content, $block) {
+        $attributes = self::sanitize_block_attributes($attributes);
+        
+        // Check if properties post type exists
+        if (!post_type_exists('property')) {
+            return self::render_error_message(__('Properties post type is not registered.', 'houzez'));
+        }
+        
+        $query_args = self::build_query_args($attributes);
+        $properties_query = new WP_Query($query_args);
+        
+        if (!$properties_query->have_posts()) {
+            wp_reset_postdata();
+            return self::render_no_properties();
+        }
+        
+        ob_start();
+        self::render_properties_grid($properties_query, $attributes);
+        wp_reset_postdata();
+        
+        return ob_get_clean();
     }
     
     /**
-     * Set default attribute values
+     * Sanitize and validate block attributes
      */
-    private function set_defaults() {
-        $this->defaults = array(
-            'postsToShow' => 6,
-            'order' => 'DESC',
-            'orderBy' => 'date',
-            'layout' => 'grid',
-            'columns' => 3,
+    private static function sanitize_block_attributes($attributes) {
+        $defaults = array(
+            'postsToShow' => HouzezConstants::DEFAULT_POSTS_TO_SHOW,
+            'order' => HouzezConstants::DEFAULT_ORDER,
+            'orderBy' => HouzezConstants::DEFAULT_ORDER_BY,
+            'layout' => HouzezConstants::DEFAULT_LAYOUT,
+            'columns' => HouzezConstants::DEFAULT_COLUMNS,
             'showFeatured' => true,
             'showPrice' => true,
             'showLocation' => true,
@@ -38,138 +60,278 @@ class HouzezPropertyRenderer {
             'showYearBuilt' => true,
             'showAgent' => true,
             'showStatus' => true,
-            'showTaxonomies' => true,
             'showExcerpt' => true,
-            'excerptLength' => 20,
+            'excerptLength' => HouzezConstants::DEFAULT_EXCERPT_LENGTH,
             'showMeta' => true,
-            'showMap' => false,
-            'imageSize' => 'medium_large',
+            'imageSize' => HouzezConstants::DEFAULT_IMAGE_SIZE,
             'pricePrefix' => '$',
             'sizeSuffix' => 'sq ft',
             'categoryFilter' => '',
             'statusFilter' => '',
             'featuredOnly' => false
         );
-    }
-    
-    /**
-     * Sanitize and validate attributes
-     */
-    private function sanitize_attributes() {
-        $this->attributes = wp_parse_args((array)$this->attributes, $this->defaults);
         
-        // Sanitize values
-        $this->attributes['postsToShow'] = max(1, (int)$this->attributes['postsToShow']);
-        $this->attributes['columns'] = max(1, min(6, (int)$this->attributes['columns']));
-        $this->attributes['excerptLength'] = max(10, (int)$this->attributes['excerptLength']);
+        $attributes = wp_parse_args((array)$attributes, $defaults);
+        
+        // Sanitize numeric values with bounds
+        $attributes['postsToShow'] = max(1, min(HouzezConstants::MAX_POSTS_TO_SHOW, (int)$attributes['postsToShow']));
+        $attributes['columns'] = max(1, min(HouzezConstants::MAX_COLUMNS, (int)$attributes['columns']));
+        $attributes['excerptLength'] = max(1, min(HouzezConstants::MAX_EXCERPT_LENGTH, (int)$attributes['excerptLength']));
         
         // Validate enums
-        $this->attributes['order'] = in_array($this->attributes['order'], array('ASC', 'DESC'), true) ? $this->attributes['order'] : 'DESC';
-        $this->attributes['orderBy'] = in_array($this->attributes['orderBy'], array('date', 'modified', 'title', 'price', 'size'), true) ? $this->attributes['orderBy'] : 'date';
-        $this->attributes['layout'] = in_array($this->attributes['layout'], array('grid', 'list', 'masonry', 'carousel'), true) ? $this->attributes['layout'] : 'grid';
-        $this->attributes['imageSize'] = in_array($this->attributes['imageSize'], array('thumbnail', 'medium', 'medium_large', 'large', 'full'), true) ? $this->attributes['imageSize'] : 'medium_large';
+        $attributes['order'] = in_array($attributes['order'], array('ASC', 'DESC'), true) ? $attributes['order'] : 'DESC';
+        $attributes['orderBy'] = in_array($attributes['orderBy'], array('date', 'modified', 'title', 'price', 'size'), true) ? $attributes['orderBy'] : 'date';
+        $attributes['layout'] = in_array($attributes['layout'], array('grid', 'list', 'masonry', 'carousel'), true) ? $attributes['layout'] : 'grid';
         
-        // Sanitize booleans
-        $this->attributes['showFeatured'] = (bool) $this->attributes['showFeatured'];
-        $this->attributes['showPrice'] = (bool) $this->attributes['showPrice'];
-        $this->attributes['showLocation'] = (bool) $this->attributes['showLocation'];
-        $this->attributes['showSize'] = (bool) $this->attributes['showSize'];
-        $this->attributes['showBedrooms'] = (bool) $this->attributes['showBedrooms'];
-        $this->attributes['showBathrooms'] = (bool) $this->attributes['showBathrooms'];
-        $this->attributes['showGarage'] = (bool) $this->attributes['showGarage'];
-        $this->attributes['showYearBuilt'] = (bool) $this->attributes['showYearBuilt'];
-        $this->attributes['showAgent'] = (bool) $this->attributes['showAgent'];
-        $this->attributes['showStatus'] = (bool) $this->attributes['showStatus'];
-        $this->attributes['showTaxonomies'] = (bool) $this->attributes['showTaxonomies'];
-        $this->attributes['showExcerpt'] = (bool) $this->attributes['showExcerpt'];
-        $this->attributes['showMeta'] = (bool) $this->attributes['showMeta'];
-        $this->attributes['showMap'] = (bool) $this->attributes['showMap'];
-        $this->attributes['featuredOnly'] = (bool) $this->attributes['featuredOnly'];
+        // Validate image sizes
+        $valid_image_sizes = array(
+            HouzezConstants::IMAGE_SIZE_THUMBNAIL,
+            HouzezConstants::IMAGE_SIZE_MEDIUM,
+            HouzezConstants::IMAGE_SIZE_MEDIUM_LARGE,
+            HouzezConstants::IMAGE_SIZE_LARGE,
+            HouzezConstants::IMAGE_SIZE_FULL
+        );
+        $attributes['imageSize'] = in_array($attributes['imageSize'], $valid_image_sizes, true) ? $attributes['imageSize'] : HouzezConstants::DEFAULT_IMAGE_SIZE;
         
         // Sanitize strings
-        $this->attributes['pricePrefix'] = sanitize_text_field($this->attributes['pricePrefix']);
-        $this->attributes['sizeSuffix'] = sanitize_text_field($this->attributes['sizeSuffix']);
-        $this->attributes['categoryFilter'] = sanitize_text_field($this->attributes['categoryFilter']);
-        $this->attributes['statusFilter'] = sanitize_text_field($this->attributes['statusFilter']);
+        $attributes['pricePrefix'] = sanitize_text_field($attributes['pricePrefix']);
+        $attributes['sizeSuffix'] = sanitize_text_field($attributes['sizeSuffix']);
+        $attributes['categoryFilter'] = sanitize_text_field($attributes['categoryFilter']);
+        $attributes['statusFilter'] = sanitize_text_field($attributes['statusFilter']);
+        
+        return $attributes;
     }
     
     /**
-     * Build meta query for property features
+     * Build query arguments for properties
      */
-    private function build_meta_query() {
-        $meta_query = array();
+    private static function build_query_args($attributes) {
+        $query_args = array(
+            'post_type' => 'property',
+            'posts_per_page' => $attributes['postsToShow'],
+            'post_status' => 'publish',
+            'order' => $attributes['order'],
+            'orderby' => $attributes['orderBy'],
+            'no_found_rows' => true,
+            'update_post_meta_cache' => false,
+            'update_post_term_cache' => false,
+        );
         
-        if ($this->attributes['featuredOnly']) {
-            $meta_query[] = array(
-                'key' => 'fave_featured',
-                'value' => '1',
-                'compare' => '='
+        // Add meta query for featured properties if needed
+        if ($attributes['featuredOnly']) {
+            $query_args['meta_query'] = array(
+                array(
+                    'key' => 'fave_featured',
+                    'value' => '1',
+                    'compare' => '='
+                )
             );
         }
         
-        return $meta_query;
-    }
-    
-    /**
-     * Build tax query for filters
-     */
-    private function build_tax_query() {
+        // Add taxonomy filters
         $tax_query = array();
         
-        // Property category filter
-        if (!empty($this->attributes['categoryFilter'])) {
+        if (!empty($attributes['categoryFilter'])) {
             $tax_query[] = array(
                 'taxonomy' => 'property_type',
                 'field' => 'slug',
-                'terms' => $this->attributes['categoryFilter']
+                'terms' => $attributes['categoryFilter']
             );
         }
         
-        // Property status filter
-        if (!empty($this->attributes['statusFilter'])) {
+        if (!empty($attributes['statusFilter'])) {
             $tax_query[] = array(
                 'taxonomy' => 'property_status',
                 'field' => 'slug',
-                'terms' => $this->attributes['statusFilter']
+                'terms' => $attributes['statusFilter']
             );
         }
         
-        return $tax_query;
-    }
-    
-    /**
-     * Execute the query
-     */
-    private function execute_query() {
-        $query_args = array(
-            'post_type'      => 'property',
-            'posts_per_page' => $this->attributes['postsToShow'],
-            'post_status'    => 'publish',
-            'order'          => $this->attributes['order'],
-            'orderby'        => $this->attributes['orderBy']
-        );
-        
-        // Add meta query if needed
-        $meta_query = $this->build_meta_query();
-        if (!empty($meta_query)) {
-            $query_args['meta_query'] = $meta_query;
-        }
-        
-        // Add tax query if needed
-        $tax_query = $this->build_tax_query();
         if (!empty($tax_query)) {
+            $tax_query['relation'] = 'AND';
             $query_args['tax_query'] = $tax_query;
         }
         
-        $this->query = new WP_Query($query_args);
+        return apply_filters('houzez_properties_query_args', $query_args, $attributes);
+    }
+    
+    /**
+     * Render properties grid
+     */
+    private static function render_properties_grid($query, $attributes) {
+        $wrapper_classes = self::get_wrapper_classes($attributes);
+        $grid_styles = self::get_grid_styles($attributes);
+        ?>
+        <div class="<?php echo esc_attr($wrapper_classes); ?>" <?php echo $grid_styles; ?>>
+            <?php while ($query->have_posts()): $query->the_post(); ?>
+                <?php self::render_property_item(get_the_ID(), $attributes); ?>
+            <?php endwhile; ?>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Get wrapper CSS classes
+     */
+    private static function get_wrapper_classes($attributes) {
+        $classes = array(
+            'houzez-properties-block',
+            'layout-' . esc_attr($attributes['layout']),
+            'columns-' . esc_attr($attributes['columns'])
+        );
         
-        return $this->query->have_posts();
+        return implode(' ', $classes);
+    }
+    
+    /**
+     * Get grid styles for CSS grid
+     */
+    private static function get_grid_styles($attributes) {
+        if ($attributes['layout'] === 'grid') {
+            return 'style="grid-template-columns: repeat(' . esc_attr($attributes['columns']) . ', 1fr);"';
+        }
+        return '';
+    }
+    
+    /**
+     * Render individual property item
+     */
+    private static function render_property_item($post_id, $attributes) {
+        $permalink = get_permalink($post_id);
+        $title = get_the_title($post_id);
+        $meta = self::get_property_meta($post_id);
+        ?>
+        <article class="property-item <?php echo esc_attr($attributes['layout']); ?>-item">
+            <?php self::render_property_image($post_id, $permalink, $attributes); ?>
+            <?php self::render_property_details($post_id, $permalink, $title, $meta, $attributes); ?>
+        </article>
+        <?php
+    }
+    
+    /**
+     * Render property image
+     */
+    private static function render_property_image($post_id, $permalink, $attributes) {
+        if (has_post_thumbnail($post_id)) {
+            $image = get_the_post_thumbnail($post_id, $attributes['imageSize'], array(
+                'class' => 'property-image',
+                'alt' => esc_attr(get_the_title($post_id)),
+                'loading' => 'lazy'
+            ));
+            ?>
+            <div class="property-image-wrap">
+                <a href="<?php echo esc_url($permalink); ?>">
+                    <?php echo $image; ?>
+                </a>
+                <?php if ($attributes['showFeatured'] && get_post_meta($post_id, 'fave_featured', true)): ?>
+                    <span class="featured-label"><?php esc_html_e('Featured', 'houzez'); ?></span>
+                <?php endif; ?>
+            </div>
+            <?php
+        } else {
+            ?>
+            <div class="property-image-wrap">
+                <a href="<?php echo esc_url($permalink); ?>">
+                    <div class="property-image-placeholder">
+                        <?php esc_html_e('No Image', 'houzez'); ?>
+                    </div>
+                </a>
+            </div>
+            <?php
+        }
+    }
+    
+    /**
+     * Render property details
+     */
+    private static function render_property_details($post_id, $permalink, $title, $meta, $attributes) {
+        ?>
+        <div class="property-details">
+            <h3 class="property-title">
+                <a href="<?php echo esc_url($permalink); ?>">
+                    <?php echo esc_html($title); ?>
+                </a>
+            </h3>
+            
+            <?php if ($attributes['showLocation'] && !empty($meta['location'])): ?>
+                <div class="property-location">
+                    📍 <?php echo esc_html($meta['location']); ?>
+                </div>
+            <?php endif; ?>
+            
+            <?php if ($attributes['showPrice'] && !empty($meta['price'])): ?>
+                <div class="property-price">
+                    <?php echo esc_html(self::format_price($meta['price'], $attributes['pricePrefix'])); ?>
+                </div>
+            <?php endif; ?>
+            
+            <?php self::render_property_meta($meta, $attributes); ?>
+            
+            <?php if ($attributes['showExcerpt']): ?>
+                <div class="property-excerpt">
+                    <?php echo wp_kses_post(self::get_property_excerpt($post_id, $attributes['excerptLength'])); ?>
+                </div>
+            <?php endif; ?>
+            
+            <?php if ($attributes['showAgent'] && !empty($meta['agent'])): ?>
+                <div class="property-agent">
+                    <strong><?php esc_html_e('Agent:', 'houzez'); ?></strong> <?php echo esc_html($meta['agent']); ?>
+                </div>
+            <?php endif; ?>
+            
+            <?php if ($attributes['showStatus'] && !empty($meta['status'])): ?>
+                <div class="property-status">
+                    <strong><?php esc_html_e('Status:', 'houzez'); ?></strong> <?php echo esc_html(implode(', ', $meta['status'])); ?>
+                </div>
+            <?php endif; ?>
+            
+            <?php if ($attributes['showYearBuilt'] && !empty($meta['year_built'])): ?>
+                <div class="property-year-built">
+                    <strong><?php esc_html_e('Year Built:', 'houzez'); ?></strong> <?php echo esc_html($meta['year_built']); ?>
+                </div>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Render property meta information
+     */
+    private static function render_property_meta($meta, $attributes) {
+        if (!$attributes['showMeta']) return;
+        ?>
+        <div class="property-meta">
+            <?php if ($attributes['showBedrooms'] && !empty($meta['bedrooms'])): ?>
+                <span class="meta-bedrooms">
+                    🛏️ <?php echo esc_html($meta['bedrooms']); ?> <?php esc_html_e('Beds', 'houzez'); ?>
+                </span>
+            <?php endif; ?>
+            
+            <?php if ($attributes['showBathrooms'] && !empty($meta['bathrooms'])): ?>
+                <span class="meta-bathrooms">
+                    🚿 <?php echo esc_html($meta['bathrooms']); ?> <?php esc_html_e('Baths', 'houzez'); ?>
+                </span>
+            <?php endif; ?>
+            
+            <?php if ($attributes['showSize'] && !empty($meta['size'])): ?>
+                <span class="meta-size">
+                    📐 <?php echo esc_html(self::format_size($meta['size'], $attributes['sizeSuffix'])); ?>
+                </span>
+            <?php endif; ?>
+            
+            <?php if ($attributes['showGarage'] && !empty($meta['garage'])): ?>
+                <span class="meta-garage">
+                    🚗 <?php echo esc_html($meta['garage']); ?> <?php esc_html_e('Garage', 'houzez'); ?>
+                </span>
+            <?php endif; ?>
+        </div>
+        <?php
     }
     
     /**
      * Get property meta data
      */
-    private function get_property_meta($post_id) {
+    private static function get_property_meta($post_id) {
         return array(
             'price' => get_post_meta($post_id, 'fave_property_price', true),
             'location' => get_post_meta($post_id, 'fave_property_location', true),
@@ -186,30 +348,32 @@ class HouzezPropertyRenderer {
     /**
      * Format property price
      */
-    private function format_price($price) {
+    private static function format_price($price, $prefix) {
         if (empty($price)) return '';
-        
-        return $this->attributes['pricePrefix'] . number_format(floatval($price));
+        return $prefix . number_format(floatval($price));
     }
     
     /**
      * Format property size
      */
-    private function format_size($size) {
+    private static function format_size($size, $suffix) {
         if (empty($size)) return '';
-        
-        return number_format(floatval($size)) . ' ' . $this->attributes['sizeSuffix'];
+        return number_format(floatval($size)) . ' ' . $suffix;
     }
     
     /**
      * Get property excerpt
      */
-    private function get_property_excerpt($post_id) {
+    private static function get_property_excerpt($post_id, $excerpt_length) {
         $excerpt = get_the_excerpt($post_id);
-        $words = explode(' ', $excerpt);
+        if (empty($excerpt)) {
+            $excerpt = get_the_content(null, false, $post_id);
+        }
         
-        if (count($words) > $this->attributes['excerptLength']) {
-            $words = array_slice($words, 0, $this->attributes['excerptLength']);
+        $words = explode(' ', wp_strip_all_tags($excerpt));
+        
+        if (count($words) > $excerpt_length) {
+            $words = array_slice($words, 0, $excerpt_length);
             $excerpt = implode(' ', $words) . '...';
         }
         
@@ -217,218 +381,17 @@ class HouzezPropertyRenderer {
     }
     
     /**
-     * Render property image
+     * Render no properties message
      */
-    private function render_property_image($post_id, $permalink) {
-        if (has_post_thumbnail($post_id)) {
-            $image = get_the_post_thumbnail($post_id, $this->attributes['imageSize'], array(
-                'class' => 'property-image',
-                'alt' => get_the_title($post_id)
-            ));
-            ?>
-            <div class="property-image-wrap">
-                <a href="<?php echo esc_url($permalink); ?>">
-                    <?php echo $image; ?>
-                </a>
-                <?php if ($this->attributes['showFeatured']): ?>
-                    <span class="featured-label"><?php esc_html_e('Featured', 'houzez'); ?></span>
-                <?php endif; ?>
-            </div>
-            <?php
-        }
+    private static function render_no_properties() {
+        return '<div class="houzez-no-properties"><p>' . esc_html__('No properties found.', 'houzez') . '</p></div>';
     }
     
     /**
-     * Render property meta information
+     * Render error message
      */
-    private function render_property_meta($meta) {
-        if (!$this->attributes['showMeta']) return;
-        ?>
-        <div class="property-meta">
-            <?php if ($this->attributes['showBedrooms'] && !empty($meta['bedrooms'])): ?>
-                <span class="meta-bedrooms">
-                    <i class="houzez-icon icon-hotel-double-bed-1"></i>
-                    <?php echo esc_html($meta['bedrooms']); ?>
-                </span>
-            <?php endif; ?>
-            
-            <?php if ($this->attributes['showBathrooms'] && !empty($meta['bathrooms'])): ?>
-                <span class="meta-bathrooms">
-                    <i class="houzez-icon icon-bathroom-shower-1"></i>
-                    <?php echo esc_html($meta['bathrooms']); ?>
-                </span>
-            <?php endif; ?>
-            
-            <?php if ($this->attributes['showSize'] && !empty($meta['size'])): ?>
-                <span class="meta-size">
-                    <i class="houzez-icon icon-ruler"></i>
-                    <?php echo esc_html($this->format_size($meta['size'])); ?>
-                </span>
-            <?php endif; ?>
-            
-            <?php if ($this->attributes['showGarage'] && !empty($meta['garage'])): ?>
-                <span class="meta-garage">
-                    <i class="houzez-icon icon-garage"></i>
-                    <?php echo esc_html($meta['garage']); ?>
-                </span>
-            <?php endif; ?>
-        </div>
-        <?php
-    }
-    
-    /**
-     * Render property details
-     */
-    private function render_property_details($post_id, $permalink, $title, $meta) {
-        ?>
-        <div class="property-details">
-            <h3 class="property-title">
-                <a href="<?php echo esc_url($permalink); ?>">
-                    <?php echo esc_html($title); ?>
-                </a>
-            </h3>
-            
-            <?php if ($this->attributes['showLocation'] && !empty($meta['location'])): ?>
-                <div class="property-location">
-                    <i class="houzez-icon icon-pin-1"></i>
-                    <?php echo esc_html($meta['location']); ?>
-                </div>
-            <?php endif; ?>
-            
-            <?php if ($this->attributes['showPrice'] && !empty($meta['price'])): ?>
-                <div class="property-price">
-                    <?php echo esc_html($this->format_price($meta['price'])); ?>
-                </div>
-            <?php endif; ?>
-            
-            <?php $this->render_property_meta($meta); ?>
-            
-            <?php if ($this->attributes['showExcerpt']): ?>
-                <div class="property-excerpt">
-                    <?php echo wp_kses_post($this->get_property_excerpt($post_id)); ?>
-                </div>
-            <?php endif; ?>
-            
-            <?php if ($this->attributes['showAgent'] && !empty($meta['agent'])): ?>
-                <div class="property-agent">
-                    <span><?php esc_html_e('Agent:', 'houzez'); ?></span>
-                    <?php echo esc_html($meta['agent']); ?>
-                </div>
-            <?php endif; ?>
-            
-            <?php if ($this->attributes['showStatus'] && !empty($meta['status'])): ?>
-                <div class="property-status">
-                    <?php echo esc_html(implode(', ', $meta['status'])); ?>
-                </div>
-            <?php endif; ?>
-            
-            <?php if ($this->attributes['showYearBuilt'] && !empty($meta['year_built'])): ?>
-                <div class="property-year-built">
-                    <span><?php esc_html_e('Year Built:', 'houzez'); ?></span>
-                    <?php echo esc_html($meta['year_built']); ?>
-                </div>
-            <?php endif; ?>
-        </div>
-        <?php
-    }
-    
-    /**
-     * Render individual property item
-     */
-    private function render_property_item($post_id, $permalink, $title) {
-        $meta = $this->get_property_meta($post_id);
-        ?>
-        <article class="property-item <?php echo esc_attr($this->attributes['layout']); ?>-item">
-            <?php $this->render_property_image($post_id, $permalink); ?>
-            <?php $this->render_property_details($post_id, $permalink, $title, $meta); ?>
-        </article>
-        <?php
-    }
-    
-    /**
-     * Render the no properties message
-     */
-    private function render_no_properties() {
-        return '<p>' . esc_html__('No properties found.', 'houzez') . '</p>';
-    }
-    
-    /**
-     * Get CSS classes for the wrapper
-     */
-    private function get_wrapper_classes() {
-        $classes = array(
-            'houzez-properties-block',
-            'layout-' . $this->attributes['layout'],
-            'columns-' . $this->attributes['columns']
-        );
-        
-        return implode(' ', $classes);
-    }
-    
-    /**
-     * Main rendering method
-     */
-    public function render() {
-        if (!$this->execute_query()) {
-            return $this->render_no_properties();
-        }
-        
-        ob_start();
-        ?>
-        <section class="<?php echo esc_attr($this->get_wrapper_classes()); ?>" 
-                 aria-label="<?php echo esc_attr__('Property listings', 'houzez'); ?>">
-            <?php
-            while ($this->query->have_posts()):
-                $this->query->the_post();
-                $post_id = get_the_ID();
-                $permalink = get_permalink($post_id);
-                $title = get_the_title($post_id);
-                $this->render_property_item($post_id, $permalink, $title);
-            endwhile;
-            
-            wp_reset_postdata();
-            ?>
-        </section>
-        
-        <style>
-            .houzez-properties-block.layout-grid {
-                display: grid;
-                grid-template-columns: repeat(<?php echo esc_attr($this->attributes['columns']); ?>, 1fr);
-                gap: 20px;
-            }
-            .houzez-properties-block.layout-list .property-item {
-                display: flex;
-                margin-bottom: 20px;
-            }
-            .featured-label {
-                background: #ff5a5f;
-                color: white;
-                padding: 5px 10px;
-                position: absolute;
-                top: 10px;
-                left: 10px;
-                font-size: 12px;
-                font-weight: bold;
-            }
-        </style>
-        <?php
-        return ob_get_clean();
+    private static function render_error_message($message) {
+        return '<div class="houzez-error"><p>' . esc_html($message) . '</p></div>';
     }
 }
 
-/**
- * Wrapper function for backward compatibility and block rendering
- */
-if (! function_exists('houzez_properties_render_callback')) {
-    function houzez_properties_render_callback($attributes, $content) {
-        $renderer = new HouzezPropertyRenderer($attributes);
-        return $renderer->render();
-    }
-}
-
-// Register the block render callback
-add_action('init', function() {
-    register_block_type('create-block/houzez', array(
-        'render_callback' => 'houzez_properties_render_callback'
-    ));
-});
