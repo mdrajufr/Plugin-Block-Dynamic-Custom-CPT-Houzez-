@@ -534,7 +534,7 @@ class HouzezPlugin {
             return;
         }
 
-        // Include the renderer file
+        // Include the renderer file from src/houzez/
         if (file_exists(plugin_dir_path(__FILE__) . 'src/houzez/render.php')) {
             include_once plugin_dir_path(__FILE__) . 'src/houzez/render.php';
         }

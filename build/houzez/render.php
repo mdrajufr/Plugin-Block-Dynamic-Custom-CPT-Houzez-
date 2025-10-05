@@ -394,4 +394,3 @@ class HouzezBlockRenderer {
         return '<div class="houzez-error"><p>' . esc_html($message) . '</p></div>';
     }
 }
-
